@@ -7,18 +7,15 @@ import org.springframework.beans.PropertyValues;
 import org.springframework.beans.factory.config.InstantiationAwareBeanPostProcessor;
 import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
-import org.springframework.core.io.ClassPathResource;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.EncodedResource;
 import org.springframework.util.ObjectUtils;
 
 /**
- * Bean 实例化生命周期 阶段
+ * Bean 初始化生命周期 阶段
  *
  * @author ajin
  */
 
-public class BeanInstantiationLifecycleDemo {
+public class BeanInitializationLifecycleDemo {
 
     @SuppressWarnings("all")
     public static void main(String[] args) {
