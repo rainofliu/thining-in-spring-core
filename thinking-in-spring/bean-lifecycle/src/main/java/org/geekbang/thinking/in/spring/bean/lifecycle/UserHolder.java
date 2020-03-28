@@ -37,4 +37,9 @@ public class UserHolder implements BeanNameAware, BeanClassLoaderAware {
     public void setBeanName(String name) {
         this.beanName = name;
     }
+
+    @Override
+    protected void finalize() throws Throwable {
+        super.finalize();
+    }
 }

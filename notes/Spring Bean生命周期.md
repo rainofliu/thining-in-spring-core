@@ -1596,6 +1596,470 @@ protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
 
 + Bean初始化(Initialization)
   + `@PostConstruct`标注的方法
+  
+    > 依赖于注解驱动的`CommonAnnotationBeanPostProcessor`
+  
+    ```java
+    public CommonAnnotationBeanPostProcessor() {
+    		setOrder(Ordered.LOWEST_PRECEDENCE - 3);
+    		setInitAnnotationType(PostConstruct.class);
+    		setDestroyAnnotationType(PreDestroy.class);
+    		ignoreResourceType("javax.xml.ws.WebServiceContext");
+    	}
+    ```
+  
   + 实现`InitializingBean`接口的`afterPropertiesSet()`方法
+  
   + 自定义初始化方法
+  
+  Bean初始化的三种方式被回调先后顺序为：
+  
+  + `@PostConstruct`
+  + `InitializingBean#afterPropertiesSet()`
+  + `<bean init-method…  / @Bean(init….)`
+  
 
+我们解释`@PostConstruct`标注的方法被最先调用的原因
+
+  ` CommonAnnotationBeanPostProcessor`继承了`InitDestroyAnnotationBeanPostProcessor`，
+
+`InitDestroyAnnotationBeanPostProcessor#postProcessBeforeInitialization`：
+
+> 这是Bean初始化前阶段执行的
+
+```java
+@Override
+	public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+        // 获取初始化方法
+		LifecycleMetadata metadata = findLifecycleMetadata(bean.getClass());
+		try {
+            // 回调@PostConstruct标注的方法
+			metadata.invokeInitMethods(bean, beanName);
+		}
+		catch (InvocationTargetException ex) {
+			throw new BeanCreationException(beanName, "Invocation of init method failed", ex.getTargetException());
+		}
+		catch (Throwable ex) {
+			throw new BeanCreationException(beanName, "Failed to invoke init method", ex);
+		}
+		return bean;
+	}
+private LifecycleMetadata findLifecycleMetadata(Class<?> clazz) {
+		if (this.lifecycleMetadataCache == null) {
+			// Happens after deserialization, during destruction...
+			return buildLifecycleMetadata(clazz);
+		}
+        // 创建缓存
+		// Quick check on the concurrent map first, with minimal locking.
+		LifecycleMetadata metadata = this.lifecycleMetadataCache.get(clazz);
+		if (metadata == null) {
+			synchronized (this.lifecycleMetadataCache) {
+				metadata = this.lifecycleMetadataCache.get(clazz);
+				if (metadata == null) {
+					metadata = buildLifecycleMetadata(clazz);
+					this.lifecycleMetadataCache.put(clazz, metadata);
+				}
+				return metadata;
+			}
+		}
+		return metadata;
+	}
+// 构建LifecycleMetadata
+private LifecycleMetadata buildLifecycleMetadata(final Class<?> clazz) {
+		if (!AnnotationUtils.isCandidateClass(clazz, Arrays.asList(this.initAnnotationType, this.destroyAnnotationType))) {
+			return this.emptyLifecycleMetadata;
+		}
+
+		List<LifecycleElement> initMethods = new ArrayList<>();
+		List<LifecycleElement> destroyMethods = new ArrayList<>();
+		Class<?> targetClass = clazz;
+
+		do {
+			final List<LifecycleElement> currInitMethods = new ArrayList<>();
+			final List<LifecycleElement> currDestroyMethods = new ArrayList<>();
+			
+			ReflectionUtils.doWithLocalMethods(targetClass, method -> {
+                // 关键在于initAnnotationType
+                // CommonAnnotationBeanPostProcessor的无参构造器调用了setInitAnnotationType
+				if (this.initAnnotationType != null && method.isAnnotationPresent(this.initAnnotationType)) {
+					LifecycleElement element = new LifecycleElement(method);
+					currInitMethods.add(element);
+					if (logger.isTraceEnabled()) {
+						logger.trace("Found init method on class [" + clazz.getName() + "]: " + method);
+					}
+				}
+				if (this.destroyAnnotationType != null && method.isAnnotationPresent(this.destroyAnnotationType)) {
+					currDestroyMethods.add(new LifecycleElement(method));
+					if (logger.isTraceEnabled()) {
+						logger.trace("Found destroy method on class [" + clazz.getName() + "]: " + method);
+					}
+				}
+			});
+
+			initMethods.addAll(0, currInitMethods);
+			destroyMethods.addAll(currDestroyMethods);
+			targetClass = targetClass.getSuperclass();
+		}
+		while (targetClass != null && targetClass != Object.class);
+
+		return (initMethods.isEmpty() && destroyMethods.isEmpty() ? this.emptyLifecycleMetadata :
+				new LifecycleMetadata(clazz, initMethods, destroyMethods));
+	}
+
+// 内部类
+private class LifecycleMetadata {
+    ...
+    public void invokeInitMethods(Object target, String beanName) throws Throwable {
+			Collection<LifecycleElement> checkedInitMethods = this.checkedInitMethods;
+			Collection<LifecycleElement> initMethodsToIterate =
+					(checkedInitMethods != null ? checkedInitMethods : this.initMethods);
+			if (!initMethodsToIterate.isEmpty()) {
+				for (LifecycleElement element : initMethodsToIterate) {
+					if (logger.isTraceEnabled()) {
+						logger.trace("Invoking init method on bean '" + beanName + "': " + element.getMethod());
+					}
+                    // 
+					element.invoke(target);
+				}
+			}
+		}
+    ...
+}
+```
+
+基本逻辑如下
+
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/@PostConstruct方法回调.png)
+
+> 事实证明，`@PostConstruct`标注的初始化方法会在初始化前阶段通过`CommonAnotationBeanPostProcessor#postProcessBeforeInitialization`的回调被调用，而后两者则会在初始化阶段执行，后两者的相对执行顺序详见代码。
+
+## Bean初始化后阶段
+
+回调方法： `BeanPostProcessor#postProcessAfterInitialization`
+
+小小地总结一下：Bean的初始化主要在`AbstractAutowireCapableBeanFactory# initializeBean(final String beanName, final Object bean, @Nullable RootBeanDefinition mbd)`中
+
+```java
+protected Object initializeBean(final String beanName, final Object bean, @Nullable RootBeanDefinition mbd) {
+		if (System.getSecurityManager() != null) {
+			AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+				invokeAwareMethods(beanName, bean);
+				return null;
+			}, getAccessControlContext());
+		}
+		else {
+            // Aware接口回调阶段 注意，这里并不包含ApplicationContextAwareProcessor接口的回调
+			invokeAwareMethods(beanName, bean);
+		}
+
+		Object wrappedBean = bean;
+		if (mbd == null || !mbd.isSynthetic()) {
+            // 初始化前，特别注意@PostConstruct方法已被执行,也包含//ApplicationContextAwareProcessor接口的回调
+			wrappedBean = applyBeanPostProcessorsBeforeInitialization(wrappedBean, beanName);
+		}
+
+		try {
+            // afterPropertiesSet和自定义初始化方法
+			invokeInitMethods(beanName, wrappedBean, mbd);
+		}
+		catch (Throwable ex) {
+			throw new BeanCreationException(
+					(mbd != null ? mbd.getResourceDescription() : null),
+					beanName, "Invocation of init method failed", ex);
+		}
+		if (mbd == null || !mbd.isSynthetic()) {
+            // 初始化后阶段
+			wrappedBean = applyBeanPostProcessorsAfterInitialization(wrappedBean, beanName);
+		}
+
+		return wrappedBean;
+	}
+```
+
+再看一下`ApplicationContextAwareProcessor`回调也是在**初始化前阶段**完成的
+
+```java
+public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+		if (!(bean instanceof EnvironmentAware || bean instanceof EmbeddedValueResolverAware ||
+				bean instanceof ResourceLoaderAware || bean instanceof ApplicationEventPublisherAware ||
+				bean instanceof MessageSourceAware || bean instanceof ApplicationContextAware)){
+			return bean;
+		}
+
+		AccessControlContext acc = null;
+
+		if (System.getSecurityManager() != null) {
+			acc = this.applicationContext.getBeanFactory().getAccessControlContext();
+		}
+
+		if (acc != null) {
+			AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+				invokeAwareInterfaces(bean);
+				return null;
+			}, acc);
+		}
+		else {
+            // 如下
+			invokeAwareInterfaces(bean);
+		}
+
+		return bean;
+	}
+private void invokeAwareInterfaces(Object bean) {
+		if (bean instanceof EnvironmentAware) {
+			((EnvironmentAware) bean).setEnvironment(this.applicationContext.getEnvironment());
+		}
+		if (bean instanceof EmbeddedValueResolverAware) {
+			((EmbeddedValueResolverAware) bean).setEmbeddedValueResolver(this.embeddedValueResolver);
+		}
+		if (bean instanceof ResourceLoaderAware) {
+			((ResourceLoaderAware) bean).setResourceLoader(this.applicationContext);
+		}
+		if (bean instanceof ApplicationEventPublisherAware) {
+			((ApplicationEventPublisherAware) bean).setApplicationEventPublisher(this.applicationContext);
+		}
+		if (bean instanceof MessageSourceAware) {
+			((MessageSourceAware) bean).setMessageSource(this.applicationContext);
+		}
+		if (bean instanceof ApplicationContextAware) {
+			((ApplicationContextAware) bean).setApplicationContext(this.applicationContext);
+		}
+	}
+```
+
+## Bean初始化完成阶段
+
+回调方法： 
+
++ Spring 4.1+ : `SmartInitializingSingleton#afterSingletonsInstantiated`
++ `SmartInitializingSingleton`通常在ApplicationContext场景使用
+
+```java
+@Override
+	public void refresh() throws BeansException, IllegalStateException {
+		synchronized (this.startupShutdownMonitor) {
+			// Prepare this context for refreshing.
+			prepareRefresh();
+
+			// Tell the subclass to refresh the internal bean factory.
+			ConfigurableListableBeanFactory beanFactory = obtainFreshBeanFactory();
+
+			// Prepare the bean factory for use in this context.
+			prepareBeanFactory(beanFactory);
+
+			try {
+				// Allows post-processing of the bean factory in context subclasses.
+				postProcessBeanFactory(beanFactory);
+
+				// Invoke factory processors registered as beans in the context.
+				invokeBeanFactoryPostProcessors(beanFactory);
+
+				// Register bean processors that intercept bean creation.
+				registerBeanPostProcessors(beanFactory);
+
+				// Initialize message source for this context.
+				initMessageSource();
+
+				// Initialize event multicaster for this context.
+				initApplicationEventMulticaster();
+
+				// Initialize other special beans in specific context subclasses.
+				onRefresh();
+
+				// Check for listener beans and register them.
+				registerListeners();
+
+				// Instantiate all remaining (non-lazy-init) singletons.
+				finishBeanFactoryInitialization(beanFactory);
+
+				// Last step: publish corresponding event.
+				finishRefresh();
+			}
+				...
+		}
+	}
+/**
+	 * Finish the initialization of this context's bean factory,
+	 * initializing all remaining singleton beans.
+	 */
+	protected void finishBeanFactoryInitialization(ConfigurableListableBeanFactory beanFactory) {
+		// Initialize conversion service for this context.
+		if (beanFactory.containsBean(CONVERSION_SERVICE_BEAN_NAME) &&
+				beanFactory.isTypeMatch(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class)) {
+			beanFactory.setConversionService(
+					beanFactory.getBean(CONVERSION_SERVICE_BEAN_NAME, ConversionService.class));
+		}
+
+		// Register a default embedded value resolver if no bean post-processor
+		// (such as a PropertyPlaceholderConfigurer bean) registered any before:
+		// at this point, primarily for resolution in annotation attribute values.
+		if (!beanFactory.hasEmbeddedValueResolver()) {
+			beanFactory.addEmbeddedValueResolver(strVal -> getEnvironment().resolvePlaceholders(strVal));
+		}
+
+		// Initialize LoadTimeWeaverAware beans early to allow for registering their transformers early.
+		String[] weaverAwareNames = beanFactory.getBeanNamesForType(LoadTimeWeaverAware.class, false, false);
+		for (String weaverAwareName : weaverAwareNames) {
+			getBean(weaverAwareName);
+		}
+
+		// Stop using the temporary ClassLoader for type matching.
+		beanFactory.setTempClassLoader(null);
+
+		// Allow for caching all bean definition metadata, not expecting further changes.
+		beanFactory.freezeConfiguration();
+
+		// Instantiate all remaining (non-lazy-init) singletons.
+		beanFactory.preInstantiateSingletons();
+	}
+```
+
++ `AbstractApplicationContext#refresh`
+
+  + `finishBeanFactoryInitialization`
+
+    + `beanFactory.preInstantiateSingletons();`
+
+      + `SmartInitializingSingleton#afterSingletonsInstantiated()`
+
+        ```java
+        // 遍历Bean
+        for (String beanName : beanNames) {
+                    // 获取非延迟加载的单例Bean
+        			Object singletonInstance = getSingleton(beanName);
+                    // 判断Bean Class是否实现了SmartInitializingSingleton接口
+        			if (singletonInstance instanceof SmartInitializingSingleton) {
+        				final SmartInitializingSingleton smartSingleton = (SmartInitializingSingleton) singletonInstance;
+        				if (System.getSecurityManager() != null) {
+        					AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+        						smartSingleton.afterSingletonsInstantiated();
+        						return null;
+        					}, getAccessControlContext());
+        				}
+        				else {
+                            // 回调
+        					smartSingleton.afterSingletonsInstantiated();
+        				}
+        			}
+        		}
+        ```
+
+> 所以上述代码证明了`ApplicationContext`生命周期才能调用到`SmartInitializingSingleton`，如果采用BeanFactory这样的低级底层容器，需要显示去调用其preInstantiateSingletons方法才可以。
+
+## Bean销毁前阶段
+
+方法回调：`DestructionAwareBeanPostProcessor#postProcessBeforeDestruction`
+
+`DisposableBeanAdapter#destroy`
+
+```java
+public void destroy() {
+		if (!CollectionUtils.isEmpty(this.beanPostProcessors)) {
+			for (DestructionAwareBeanPostProcessor processor : this.beanPostProcessors) {
+				// 销毁前阶段 这里有@PreDestroy被执行
+                processor.postProcessBeforeDestruction(this.bean, this.beanName);
+			}
+		}
+
+		if (this.invokeDisposableBean) {
+			
+			try {
+				if (System.getSecurityManager() != null) {
+					AccessController.doPrivileged((PrivilegedExceptionAction<Object>) () -> {
+						((DisposableBean) this.bean).destroy();
+						return null;
+					}, this.acc);
+				}
+				else {
+                    // DispoableBean销毁方法
+					((DisposableBean) this.bean).destroy();
+				}
+			}
+			catch (Throwable ex) {
+			
+			}
+		}
+
+		if (this.destroyMethod != null) {
+            // 执行自定义销毁方法
+			invokeCustomDestroyMethod(this.destroyMethod);
+		}
+		else if (this.destroyMethodName != null) {
+			Method methodToInvoke = determineDestroyMethod(this.destroyMethodName);
+			if (methodToInvoke != null) {
+				invokeCustomDestroyMethod(ClassUtils.getInterfaceMethodIfPossible(methodToInvoke));
+			}
+		}
+	}
+```
+
+## Bean销毁阶段
+
+> Bean销毁并不意味着Bean对象被垃圾回收了
+
++ `@PreDestroy` 标注方法 
+
+  > 关于回调逻辑，可参照前面初始化阶段`@PostConstruct`的分析，又是**销毁前阶段**完成的
+  >
+  > ```java
+  > @Override
+  > 	public void postProcessBeforeDestruction(Object bean, String beanName) throws BeansException {
+  > 		LifecycleMetadata metadata = findLifecycleMetadata(bean.getClass());
+  > 		try {
+  > 			metadata.invokeDestroyMethods(bean, beanName);
+  > 		}
+  > 		catch (InvocationTargetException ex) {
+  > 			String msg = "Destroy method on bean with name '" + beanName + "' threw an exception";
+  > 			...
+  > 		}
+  > 		catch (Throwable ex) {
+  > 			logger.warn("Failed to invoke destroy method on bean with name '" + beanName + "'", ex);
+  > 		}
+  > 	}
+  > ```
+
++ 实现 `DisposableBean` 接口的 `destroy()` 方法 
+
++ 自定义销毁方法
+
+## Bean垃圾收集
+
++ 关闭Spring应用上下文，确保Bean实例不被引用
++ 执行GC  `System.gc()`
++ Spring Bean覆盖的finalize(）方法被回调(需要多执行几次)
+
+#  Bean生命周期的面试题
+
++ `BeanPostProcessor`的使用场景
+
+  + 初始化前
+
+  + 初始化后
+
+  > 其中，`ApplicationContext` 相关的 `Aware` 回调也是基于 
+  >
+  > `BeanPostProcessor` 实现，即 `ApplicationContextAwareProcessor`
+
++ `BeanFactoryPostProcessor` 与 `BeanPostProcessor` 的区别 
+
+  ​    `BeanFactoryPostProcessor` 是 Spring `BeanFactory`（实际为 ConfigurableListableBeanFactory） 的后置处理器，用于扩展 `BeanFactory`，或通过 `BeanFactory` 进行依赖查找和依赖注入。 
+
+  > `BeanFactoryPostProcessor` 必须有 Spring `ApplicationContext`执行，BeanFactory 无法与其直接交互。 而 `BeanPostProcessor` 则直接与`BeanFactory` 关联，属于 N 对 1 的关系
+
+  ```java
+  // AbtractApplicationContext
+  protected void invokeBeanFactoryPostProcessors(ConfigurableListableBeanFactory beanFactory) {
+  		PostProcessorRegistrationDelegate.invokeBeanFactoryPostProcessors(beanFactory, getBeanFactoryPostProcessors());
+  
+  		// Detect a LoadTimeWeaver and prepare for weaving, if found in the meantime
+  		// (e.g. through an @Bean method registered by ConfigurationClassPostProcessor)
+  		if (beanFactory.getTempClassLoader() == null && beanFactory.containsBean(LOAD_TIME_WEAVER_BEAN_NAME)) {
+  			beanFactory.addBeanPostProcessor(new LoadTimeWeaverAwareProcessor(beanFactory));
+  			beanFactory.setTempClassLoader(new ContextTypeMatchClassLoader(beanFactory.getBeanClassLoader()));
+  		}
+  	}
+  ```
+
++ `BeanFactory`是怎样处理Bean生命周期的？
+
+  ![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/Bean生命周期.png)
