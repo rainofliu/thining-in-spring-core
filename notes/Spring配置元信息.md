@@ -437,11 +437,11 @@ public int registerBeanDefinitions(Document doc, Resource resource) throws BeanD
 
 ### Spring Bean定义注解
 
-![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/Spring Bean定义相关注解.png)
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringBean定义相关注解.png)
 
 ### Spring Bean依赖注入注解
 
-![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/Spring Bean依赖注入注解.png)
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringBean依赖注入注解.png)
 
 + `AutowiredAnnotationBeanPostProcessor`
 
@@ -470,9 +470,11 @@ public int registerBeanDefinitions(Document doc, Resource resource) throws BeanD
 
 ### Spring Bean条件装配注解
 
-![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/Spring Bean条件装配注解.png)
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringBean条件装配注解.png)
 
 ### Spring Bean生命周期回调注解
 
 ![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringBean生命周期回调注解.png)
+
+
 
