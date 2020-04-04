@@ -425,6 +425,8 @@ public int registerBeanDefinitions(Document doc, Resource resource) throws BeanD
 
 ## 基于Java注解装载Spring Bean配置元信息
 
+> `AnnotatedBeanDefinitionReader`
+
 ### Spring模式注解
 
 | Spring 注解    | 场景说明         | 起始版本 |
@@ -476,5 +478,64 @@ public int registerBeanDefinitions(Document doc, Resource resource) throws BeanD
 
 ![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringBean生命周期回调注解.png)
 
+### 底层实现 —`AnnotatedBeanDefinitionReader`
 
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/AnnotatedBeanDefinitionReader底层实现.png)
 
+​		如果还不够清楚，请在结合源码的情况下联系下图理解
+
+​		![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/AnnotatedBeanDefinitionRe.png)
+
+## 基于XML配置加载Spring IoC容器配置元信息
+
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringIoc容器相关XML配置.png)
+
+## 基于Java注解装载Spring IoC容器配置元信息
+
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringIoc容器装载配置.png)
+
++ `@ImportResource`和`@Import`只能注解在Configuration Class上，这里会涉及到递归操作，详细先不标，可查阅`ConfigurationClassPostProcessor`类
+
+  ```java
+  @ImportResource("classpath:META-INF/dependency-lookup.xml")
+  @Import(User.class)
+  public class AnnotatedSpringIoCContainerMetadataDemo {
+  
+      public static void main(String[] args) {
+  
+          AnnotationConfigApplicationContext applicationContext = new AnnotationConfigApplicationContext();
+          // 将当前类作为Configuration Class
+          applicationContext.register(AnnotatedSpringIoCContainerMetadataDemo.class);
+          // 启动Spring应用上下文
+          applicationContext.refresh();
+          Map<String, User> userMap = applicationContext.getBeansOfType(User.class);
+          for (Map.Entry<String, User> entry : userMap.entrySet()) {
+              System.out.printf("User Bean Name : %s  Content : %s\n", entry.getKey(), entry.getValue());
+          }
+          // 关闭Spring应用上下文
+          applicationContext.close();
+      }
+  
+  }
+  ```
+
+![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/SpringIoc配置属性注解.png)
+
+​	
+
+```java
+@Target(ElementType.TYPE)
+@Retention(RetentionPolicy.RUNTIME)
+@Documented
+@Repeatable(PropertySources.class)
+public @interface PropertySource {
+    ...
+}
+```
+
+> Java8`@Repeatable`支持在一个类上相同注解可标注多次，所以我们的`@PropertySource`注解可以如下配置
+>
+> ```java
+> @PropertySource("classpath:META-INF/user.properties")
+> @PropertySource("classpath:META-INF/user.properties")
+> ```
