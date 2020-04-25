@@ -6,7 +6,7 @@
 
 本部分包含IoC容器的基本原理，涉及一些源码分析。
 
-+ [Spring Bean生命周期](/notes/Spring Bean生命周期.md)
-+ [Spring Bean配置元信息](/notes/Spring配置元信息.md)
-+ [Spring 资源管理](/notes/Spring资源管理(Resource).md)
++ [Bean生命周期的理解](/notes/SpringBean生命周期.md)
++ [理解配置元信息](/notes/Spring配置元信息.md)
++ [Spring中的资源管理](/notes/Spring资源管理(Resource).md)
 
