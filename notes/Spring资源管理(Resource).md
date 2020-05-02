@@ -750,3 +750,206 @@ public class PathMatchingResourcePatternResolver implements ResourcePatternResol
 + 实现`org.springframework.util.PathMatcher`
 + 重置`PathMatcher`
   + `org.springframework.core.io.support.PathMatchingResourcePatternResolver#setPathMatcher`
+
+## 依赖注入Spring `Resource`
+
+> 如何在xml和java注解场景注入`Resource`对象
+
++ 基于`@Value`实现
+
+  > `@Value`除了注入外部化配置外，还可以注入`Resource`资源
+
+  ```java
+  @Value("classpath:/...")
+  private Resource resource;
+  ```
+
+  + 首先在resource下面创建一个文件夹METE-INF，再创建好`default.properties`文件
+
+    ```properties
+    name=ajin
+    ```
+
+  + 编写一个资源工具类`ResourceUtils`，负责将注入的Resource解析成字符串
+
+    ```java
+    public interface ResourceUtils {
+    
+        static String getContent(Resource resource) {
+            try {
+                return getContent(resource, "UTF-8");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    
+        static String getContent(Resource resource, String encoding) throws IOException {
+            EncodedResource encodedResource = new EncodedResource(resource, encoding);
+            // 字符输入流
+            // 字符输入流 try-with-resource AutoClosable
+            try (Reader reader = encodedResource.getReader()) {
+                return IOUtils.toString(reader);
+            }
+        }
+    }
+    ```
+
+    > 在jdk1.8中，接口是支持静态方法的，当然我们也可以直接定义为一个普通类
+
+  + 依赖注入`Resource`
+
+    ```java
+    /**
+     * 注入{@link Resource}对象Demo
+     *
+     * @author ajin
+     * @see Resource
+     * @see Value
+     * @see AnnotationConfigApplicationContext
+     */
+    
+    public class InjectingResourceDemo {
+    	// 注入Resource
+        @Value("classpath:/META-INF/default.properties")
+        private Resource defaultPropertiesResource;
+    	
+        // 初始化方法，在依赖注入完成后执行
+        @PostConstruct
+        public void init() {
+            System.out.println(ResourceUtils.getContent(defaultPropertiesResource));
+        }
+    
+        public static void main(String[] args) {
+            AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext();
+            // 将当前类注册为@Configuration Class
+            // @Configuration -> @Component  -> Spring Bean
+            context.register(InjectingResourceDemo.class);
+            context.refresh();
+            context.close();
+        }
+    }
+    ```
+
+    控制台输出结果：
+
+    ```properties
+    name=ajin
+    ```
+
+    如果我们再用集合注入测试一下的话(在`META-INF`文件夹下再创建一个`properties`文件)
+
+    ```pro
+    name=时间旅行者
+    ```
+
+    ```java
+        @Value("classpath*:/META-INF/*.properties")
+        private Resource[] propertiesResources;
+    
+        @Value("classpath*:/META-INF/*.properties")
+        private List<Resource> resources;
+    
+     Stream.of(propertiesResources).map(ResourceUtils::getContent).forEach(System.out::println);
+     System.out.println("======");
+            Stream.of(resources.toArray()).map(ResourceUtils::getContent).forEach(System.out::println);
+    ```
+
+    测试结果如下：
+
+    ```properties
+    name=ajin
+    name=\u65F6\u95F4\u65C5\u884C\u8005
+    java.io.FileNotFoundException: class path resource [classpath*:/META-INF/*.properties] cannot be opened because it does not exist
+    ```
+
+    > 这里证明`List`的方式来注入`Resource`是失败的，而`Resource[]`是可以被成功注入的。
+## 依赖注入`ResourceLoader`
+
+方式一：实现`ResourceLoaderAware`接口回调
+
+```java
+// ApplicationContextAwareProcessor#postProcessBeforeInitialization
+public Object postProcessBeforeInitialization(Object bean, String beanName) throws BeansException {
+		if (!(bean instanceof EnvironmentAware || bean instanceof EmbeddedValueResolverAware ||
+				bean instanceof ResourceLoaderAware || bean instanceof ApplicationEventPublisherAware ||
+				bean instanceof MessageSourceAware || bean instanceof ApplicationContextAware)){
+			return bean;
+		}
+
+		AccessControlContext acc = null;
+
+		if (System.getSecurityManager() != null) {
+			acc = this.applicationContext.getBeanFactory().getAccessControlContext();
+		}
+
+		if (acc != null) {
+			AccessController.doPrivileged((PrivilegedAction<Object>) () -> {
+				invokeAwareInterfaces(bean);
+				return null;
+			}, acc);
+		}
+		else {
+			invokeAwareInterfaces(bean);
+		}
+
+		return bean;
+	}
+
+private void invokeAwareInterfaces(Object bean) {
+		if (bean instanceof EnvironmentAware) {
+			((EnvironmentAware) bean).setEnvironment(this.applicationContext.getEnvironment());
+		}
+		if (bean instanceof EmbeddedValueResolverAware) {
+			((EmbeddedValueResolverAware) bean).setEmbeddedValueResolver(this.embeddedValueResolver);
+		}
+        //  ResourceLoaderAware接口回调
+		if (bean instanceof ResourceLoaderAware) {
+			((ResourceLoaderAware) bean).setResourceLoader(this.applicationContext);
+		}
+		if (bean instanceof ApplicationEventPublisherAware) {
+			((ApplicationEventPublisherAware) bean).setApplicationEventPublisher(this.applicationContext);
+		}
+		if (bean instanceof MessageSourceAware) {
+			((MessageSourceAware) bean).setMessageSource(this.applicationContext);
+		}
+		if (bean instanceof ApplicationContextAware) {
+			((ApplicationContextAware) bean).setApplicationContext(this.applicationContext);
+		}
+	}
+```
+
+方式二：`@Autowired`注入`ResourceLoader`
+
+方式三：注入`ApplicationContext`作为`ResourceLoader`
+
+在`org.springframework.context.support.AbstractApplicationContext#prepareBeanFactory`方法中，我们可以看到，`ApplicationContext`是调用了底层`DefaultListableBeanFactory#registerResolvableDependency`方法
+
+```java
+protected void prepareBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+        ...
+		// BeanFactory interface not registered as resolvable type in a plain factory.
+		// MessageSource registered (and found for autowiring) as a bean.
+		beanFactory.registerResolvableDependency(BeanFactory.class, beanFactory);
+		beanFactory.registerResolvableDependency(ResourceLoader.class, this);
+		beanFactory.registerResolvableDependency(ApplicationEventPublisher.class, this);
+		beanFactory.registerResolvableDependency(ApplicationContext.class, this);
+	     ...
+}
+```
+
+> 注入的`ResourceLoader`其实就是`AbstractApplicationContext`类的实现类对象
+
+## 面试题解析
+
+### Spring配置资源中有哪些常见类型
+
++ XML资源
+  + 普通 BeanDefinition XML资源  — .xml
+  + Spring Schema资源  — .xsd
++ Properties资源
+  + 普通Properties格式资源  —.properties
+  + Spring Handler实现类映射文件    `META-INF/spring.handlers`
+  + Spring Schema资源映射文件  `META-INF/spring.schemas`
++ YAML资源
+  + 普通YAML配置资源    .yaml /.yml
+

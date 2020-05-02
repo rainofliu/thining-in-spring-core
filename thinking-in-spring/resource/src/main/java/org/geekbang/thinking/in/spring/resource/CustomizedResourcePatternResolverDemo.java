@@ -24,6 +24,7 @@ import java.util.stream.Stream;
 public class CustomizedResourcePatternResolverDemo {
 
     public static void main(String[] args) throws IOException {
+
         // 读取当前包下面的所有java文件
         // *.java
         // 当前package路径
