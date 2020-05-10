@@ -172,8 +172,169 @@ public interface HierarchicalMessageSource extends MessageSource {
 > At 1:11:22 PM CST on Saturday, May 2, 2020, there was a disturbance in the Force on planet 7.
 > At 1:11:22 PM CST on 2020--05-02 13:11:22, there was a disturbance in the Force on planet 7.
 
-## `MessageResource`开箱即用实现
+## `MessageSource`开箱即用实现
 
-## `MessageResource`内建实现
++ 基于`ResourceBundle`+ `MessageFormat` 组合`MessageSource`实现
+
+  + `org.springframework.context.support.ResourceBundleMessageSource`
+
+    > + `ResourceBundle`定位文案，`MessageFormat`格式化文案
+
+    + `AbstractMessageSource#getMessage(java.lang.String, java.lang.Object[], java.lang.String, java.util.Locale)`  => `MessageSource`
+      + `AbstractMessageSource#getMessageInternal`  String
+        + `ResourceBundleMessageSource#resolveCode`   
+          + `ResourceBundleMessageSource#getResourceBundle`
+          + `ResourceBundleMessageSource#getMessageFormat`
+        + `java.text.MessageFormat#format(java.lang.Object, java.lang.StringBuffer, java.text.FieldPosition)`
+
+    ![](https://liutianruo-2019-go-go-go.oss-cn-shanghai.aliyuncs.com/images/6292_oizgysgz_ResourceBundleMessageSource原理.png)
+
+    + `MessageFormat`是非线程安全的，所以这里的`MessageFormat`是只读的，并且不能调整文案内容，所以它的功能是被限制了
+
++ 可重载`Properties`+ `MessageFormat`组合`MessageSource`实现
+
+  + `org.springframework.context.support.ReloadableResourceBundleMessageSource`
+
+## `MessageSource`内建实现
+
+`MessageSource`内建Bean来源
+
++ 预注册Bean名称为`messageSource` ，类型为`MessageSource` Bean
++ 默认内建实现   `org.springframework.context.support.DelegatingMessageSource`
+  + 层次性查找 `MessageSource`对象
+
+```java
+@Nullable
+private MessageSource messageSource;
+// AbstractApplicationContext
+protected void initMessageSource() {
+		ConfigurableListableBeanFactory beanFactory = getBeanFactory();
+         //  如果MessageSource Bean存在于当前上下文
+		if (beanFactory.containsLocalBean(MESSAGE_SOURCE_BEAN_NAME)) {
+            // 触发创建Bean
+			this.messageSource = beanFactory.getBean(MESSAGE_SOURCE_BEAN_NAME, MessageSource.class);
+			// Make MessageSource aware of parent MessageSource.
+            // 如果是层次性的，则设置parentMessageSource
+			if (this.parent != null && this.messageSource instanceof HierarchicalMessageSource) {
+				HierarchicalMessageSource hms = (HierarchicalMessageSource) this.messageSource;
+				if (hms.getParentMessageSource() == null) {
+					// Only set parent context as parent MessageSource if no parent MessageSource
+					// registered already.
+					hms.setParentMessageSource(getInternalParentMessageSource());
+				}
+			}
+			if (logger.isTraceEnabled()) {
+				logger.trace("Using MessageSource [" + this.messageSource + "]");
+			}
+		}
+        // 如果尚未注册MessageSource Bean ，则创建一个DelegatingMessageSource Bean
+		else {
+			// Use empty MessageSource to be able to accept getMessage calls.
+			DelegatingMessageSource dms = new DelegatingMessageSource();
+			dms.setParentMessageSource(getInternalParentMessageSource());
+			this.messageSource = dms;
+			beanFactory.registerSingleton(MESSAGE_SOURCE_BEAN_NAME, this.messageSource);
+			if (logger.isTraceEnabled()) {
+				logger.trace("No '" + MESSAGE_SOURCE_BEAN_NAME + "' bean, using [" + this.messageSource + "]");
+			}
+		}
+	}
+private MessageSource getMessageSource() throws IllegalStateException {
+		if (this.messageSource == null) {
+			throw new IllegalStateException("MessageSource not initialized - " +
+					"call 'refresh' before accessing messages via the context: " + this);
+		}
+		return this.messageSource;
+}
+
+```
+
+```java
+// DelegatingMessageSource
+ @Override
+	public String getMessage(String code, @Nullable Object[] args, Locale locale) throws NoSuchMessageException {
+		if (this.parentMessageSource != null) {
+			return this.parentMessageSource.getMessage(code, args, locale);
+		}
+		else {
+			throw new NoSuchMessageException(code, locale);
+		}
+	}
+```
+
+> 如果当前`ApplicationContext`的父上下文中的`MessageSource`为空，那么在没有定义`MessageSource`Bean的前提下，`AbstractApplicationContext`会创建一个空的`DelegatingMessageSource`，调用`DelegatingMessageSource#getMessage`方法一定会抛出`NoSuchMessageException`
+
+## Spring Boot为什么要新建MessageSource Bean
+
++ `AbstractApplicationContext`的实现决定了`MessageSource`的内建实现
+
++ Spring Boot通过外部化配置简化`MessageSource` Bean构建
+
++ Spring Boot基于 Bean Validation校验非常普遍
+
+  > Bean Validation 依赖国际化技术
+
+```java
+@Configuration(proxyBeanMethods = false)
+// 搜索当前BeanFactory ，如果没有MessageSource Bean 才会往下执行
+@ConditionalOnMissingBean(name = AbstractApplicationContext.MESSAGE_SOURCE_BEAN_NAME, search = SearchStrategy.CURRENT)
+@AutoConfigureOrder(Ordered.HIGHEST_PRECEDENCE)
+@Conditional(ResourceBundleCondition.class)
+@EnableConfigurationProperties
+public class MessageSourceAutoConfiguration {
+
+	private static final Resource[] NO_RESOURCES = {};
+    
+	// 外部化配置
+	@Bean
+	@ConfigurationProperties(prefix = "spring.messages")
+	public MessageSourceProperties messageSourceProperties() {
+		return new MessageSourceProperties();
+	}
+	
+	@Bean
+	public MessageSource messageSource(MessageSourceProperties properties) {
+		ResourceBundleMessageSource messageSource = new ResourceBundleMessageSource();
+		if (StringUtils.hasText(properties.getBasename())) {
+			messageSource.setBasenames(StringUtils
+					.commaDelimitedListToStringArray(StringUtils.trimAllWhitespace(properties.getBasename())));
+		}
+		if (properties.getEncoding() != null) {
+			messageSource.setDefaultEncoding(properties.getEncoding().name());
+		}
+		messageSource.setFallbackToSystemLocale(properties.isFallbackToSystemLocale());
+		Duration cacheDuration = properties.getCacheDuration();
+		if (cacheDuration != null) {
+			messageSource.setCacheMillis(cacheDuration.toMillis());
+		}
+		messageSource.setAlwaysUseMessageFormat(properties.isAlwaysUseMessageFormat());
+		messageSource.setUseCodeAsDefaultMessage(properties.isUseCodeAsDefaultMessage());
+		return messageSource;
+	}
+    ...
+}        
+```
+
+> `AbstractApplicationContext.initMessageSource`会扫描包内Bean的定义，虽然此时MessageSource Bean还没有创建，但是会读取到它的Bean的定义，就不会创建空的`DelegatingMessageSource`
 
 ## 面试题
+
+### Spring国际化接口包含哪些
+
++ 核心接口   `MessageSource`
++ 层次性接口  `org.springframework.context.HierarchicalMessageSource`
+
+### Spring有哪些`MessageSource`内建实现
+
++ `org.springframework.context.support.ResourceBundleMessageSource`
++ `org.springframework.context.support.ReloadableResourceBundleMessageSource`
++ `org.springframework.context.support.StaticMessageSource`
++ `org.springframework.context.support.DelegatingMessageSource`
+
+### 如何实现配置自动更新`MessageSource`
+
+主要技术
+
++ Java NIO2 : `java.nio.file.WatchService`
++ Java多线程： `java.util.concurrent.ExecutorService`
++ Spring :   `org.springframework.context.support.AbstractMessageSource`
