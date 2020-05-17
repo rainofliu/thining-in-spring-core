@@ -24,6 +24,8 @@ public class User {
 
     private List<City> lifeCities;
 
+    private Company company;
+
     public Long getId() {
         return id;
     }
@@ -72,6 +74,14 @@ public class User {
         this.lifeCities = lifeCities;
     }
 
+    public Company getCompany() {
+        return company;
+    }
+
+    public void setCompany(Company company) {
+        this.company = company;
+    }
+
     @Override
     public String toString() {
         return "User{" +
@@ -81,6 +91,7 @@ public class User {
                 ", configLocation=" + configLocation +
                 ", workCities=" + Arrays.toString(workCities) +
                 ", lifeCities=" + lifeCities +
+                ", company=" + company +
                 '}';
     }
 

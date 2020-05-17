@@ -17,6 +17,34 @@
             <artifactId>ioc-container-overview</artifactId>
             <version>${project.version}</version>
         </dependency>
+
+        <!--<dependency>-->
+        <!--<groupId>javax.validation</groupId>-->
+        <!--<artifactId>validation-api</artifactId>-->
+        <!--<version>2.0.1.Final</version>-->
+        <!--</dependency>-->
+        <dependency>
+            <groupId>org.hibernate.validator</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <!--<version>6.0.18.Final</version>-->
+        </dependency>
+
+        <dependency>
+            <groupId>org.mortbay.jasper</groupId>
+            <artifactId>apache-el</artifactId>
+        </dependency>
     </dependencies>
+    <!-- 依赖定义 -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter</artifactId>
+                <version>2.2.2.RELEASE</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
 </project>

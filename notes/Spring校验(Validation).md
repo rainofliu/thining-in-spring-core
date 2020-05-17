@@ -47,6 +47,10 @@ public class UserLoginValidator implements Validator {
 
 # 自定义Validator
 
+
+
 # Validator的救赎
+
+Bean Validation
 
 # 面试题
