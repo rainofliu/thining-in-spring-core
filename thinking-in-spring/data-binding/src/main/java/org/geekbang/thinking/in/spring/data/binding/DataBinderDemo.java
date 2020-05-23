@@ -45,7 +45,7 @@ public class DataBinderDemo {
 
         // 默认情况调整不变化
         // User{id=1, name='ajin', city=null, configLocation=null, workCities=null, lifeCities=null, company=null}
-        dataBinder.setAutoGrowNestedPaths(false);
+        dataBinder.setAutoGrowNestedPaths(true);
         dataBinder.setIgnoreInvalidFields(false);
 
         dataBinder.bind(propertyValues);
