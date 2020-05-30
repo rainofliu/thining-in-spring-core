@@ -1,4 +1,6 @@
-package org.geekbang.thinking.in.spring.conversion;
+package org.geekbang.thinking.in.spring.conversion.propertyeditor;
+
+import org.springframework.beans.PropertyEditorRegistrar;
 
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorSupport;
@@ -8,7 +10,7 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * String -> Properties{@link PropertyEditor}
+ * String -> Properties {@link PropertyEditor}
  *
  * @author ajin
  */

@@ -5,6 +5,7 @@ import org.springframework.core.io.Resource;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 
 /**
  * 用户类
@@ -25,6 +26,10 @@ public class User {
     private List<City> lifeCities;
 
     private Company company;
+
+    private Properties context;
+
+    private String contextAsText;
 
     public Long getId() {
         return id;
@@ -82,17 +87,20 @@ public class User {
         this.company = company;
     }
 
-    @Override
-    public String toString() {
-        return "User{" +
-                "id=" + id +
-                ", name='" + name + '\'' +
-                ", city=" + city +
-                ", configLocation=" + configLocation +
-                ", workCities=" + Arrays.toString(workCities) +
-                ", lifeCities=" + lifeCities +
-                ", company=" + company +
-                '}';
+    public Properties getContext() {
+        return context;
+    }
+
+    public void setContext(Properties context) {
+        this.context = context;
+    }
+
+    public String getContextAsText() {
+        return contextAsText;
+    }
+
+    public void setContextAsText(String contextAsText) {
+        this.contextAsText = contextAsText;
     }
 
     /**
@@ -105,5 +113,20 @@ public class User {
         user.setId(1L);
         user.setName("ajin");
         return user;
+    }
+
+    @Override
+    public String toString() {
+        return "User{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", city=" + city +
+                ", configLocation=" + configLocation +
+                ", workCities=" + Arrays.toString(workCities) +
+                ", lifeCities=" + lifeCities +
+                ", company=" + company +
+                ", context=" + context +
+                ", contextAsText='" + contextAsText + '\'' +
+                '}';
     }
 }

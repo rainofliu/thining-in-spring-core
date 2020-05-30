@@ -1,4 +1,4 @@
-package org.geekbang.thinking.in.spring.conversion;
+package org.geekbang.thinking.in.spring.conversion.propertyeditor;
 
 import java.beans.PropertyEditor;
 
