@@ -1,6 +1,5 @@
 package org.geekbang.thinking.in.spring.conversion.propertyeditor;
 
-import org.springframework.beans.PropertyEditorRegistrar;
 
 import java.beans.PropertyEditor;
 import java.beans.PropertyEditorSupport;

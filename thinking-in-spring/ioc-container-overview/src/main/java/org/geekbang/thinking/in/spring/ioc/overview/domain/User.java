@@ -31,6 +31,7 @@ public class User {
 
     private String contextAsText;
 
+
     public Long getId() {
         return id;
     }
