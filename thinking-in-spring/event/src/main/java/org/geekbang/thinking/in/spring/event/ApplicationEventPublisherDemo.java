@@ -15,7 +15,7 @@ public class ApplicationEventPublisherDemo implements ApplicationEventPublisherA
     @Autowired
     private ApplicationEventPublisher applicationEventPublisher;
 
-
+    
     @Override
     public void setApplicationEventPublisher(ApplicationEventPublisher applicationEventPublisher) {
 
