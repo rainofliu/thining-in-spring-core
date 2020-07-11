@@ -25,6 +25,7 @@
         <module>generic</module>
         <module>event</module>
         <module>annotation</module>
+        <module>environment</module>
     </modules>
 
     <properties>
