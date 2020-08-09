@@ -1231,3 +1231,97 @@ public interface Lifecycle {
 ## Spring应用上下文关闭阶段
 
 > close
+
+```java
+    /** Synchronization monitor for the "refresh" and "destroy". */
+	private final Object startupShutdownMonitor = new Object();
+
+	@Override
+	public void close() {
+		synchronized (this.startupShutdownMonitor) {
+			doClose();
+			// If we registered a JVM shutdown hook, we don't need it anymore now:
+			// We've already explicitly closed the context.
+			if (this.shutdownHook != null) {
+				try {
+					Runtime.getRuntime().removeShutdownHook(this.shutdownHook);
+				}
+				catch (IllegalStateException ex) {
+					// ignore - VM is already shutting down
+				}
+			}
+		}
+	}
+```
+
+### `AbstractApplicationContext#doClose`
+
+```java
+/** Flag that indicates whether this context is currently active. */
+private final AtomicBoolean active = new AtomicBoolean();
+
+/** Flag that indicates whether this context has been closed already. */
+private final AtomicBoolean closed = new AtomicBoolean();
+
+protected void doClose() {
+		// Check whether an actual close attempt is necessary...
+		if (this.active.get() && this.closed.compareAndSet(false, true)) {
+
+			// 撤销JMX对Spring Bean的托管
+			LiveBeansView.unregisterApplicationContext(this);
+
+			try {
+				// Publish shutdown event.
+                // 发布ContextClosedEvent事件
+				publishEvent(new ContextClosedEvent(this));
+			}
+			catch (Throwable ex) {
+				...
+			}
+
+			// Stop all Lifecycle beans, to avoid delays during individual destruction.
+			if (this.lifecycleProcessor != null) {
+				try {
+					this.lifecycleProcessor.onClose();
+				}
+				catch (Throwable ex) {
+					...
+				}
+			}
+
+			// Destroy all cached singletons in the context's BeanFactory.
+			destroyBeans();
+
+			// Close the state of this context itself.
+			closeBeanFactory();
+
+			// Let subclasses do some final clean-up if they wish...
+			onClose();
+
+			// Reset local application listeners to pre-refresh state.
+			if (this.earlyApplicationListeners != null) {
+				this.applicationListeners.clear();
+				this.applicationListeners.addAll(this.earlyApplicationListeners);
+			}
+
+			// Switch to inactive.
+			this.active.set(false);
+		}
+	}
+```
+
+#### `destroyBeans`
+
+```java
+protected void destroyBeans() {
+	getBeanFactory().destroySingletons();
+}
+```
+
+**TODO**
+
+#### `closeBeanFactory`
+
+### `removeShutdownHook`
+
+> 优雅宕机
