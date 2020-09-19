@@ -1318,10 +1318,191 @@ protected void destroyBeans() {
 }
 ```
 
-**TODO**
-
 #### `closeBeanFactory`
 
 ### `removeShutdownHook`
 
 > 优雅宕机
+
+## 面试题
+
+### Spring应用上下文生命周期有哪些阶段
+
++ 刷新阶段 refresh
++ 启动阶段  start
++ 停止 stop
++ 关闭 close
+
+### Environment完整的生命周期
+
+#### Spring Framework
+
+##### `AbstractApplicationContext#prepareRefresh`
+
+> 属于Spring应用上下文生命周期比较早的阶段
+
+```java
+        // Initialize any placeholder property sources in the context environment.
+		initPropertySources();
+
+		// Validate that all properties marked as required are resolvable:
+		// see ConfigurablePropertyResolver#setRequiredProperties
+		getEnvironment().validateRequiredProperties();
+```
+
+###### `AbstractApplicationContext#initPropertySources`
+
+```java
+/**
+	 * <p>Replace any stub property sources with actual instances.
+	 * @see org.springframework.core.env.PropertySource.StubPropertySource
+	 * @see org.springframework.web.context.support.WebApplicationContextUtils#initServletPropertySources
+	 */
+	protected void initPropertySources() {
+		// For subclasses: do nothing by default.
+	}
+```
+
+> 该方法是模板方法，给子类来实现，下面的子类都实现了该方法
+>
+> + `AbstractRefreshableWebApplicationContext`
+> + `GenericWebApplicationContext`
+> + `StaticWebApplicationContext`
+
+###### `AbstractApplicationContext#getEnvironment`
+
+```java
+/**
+	 * Return the {@code Environment} for this application context in configurable
+	 * form, allowing for further customization.
+	 * <p>If none specified, a default environment will be initialized via
+	 * {@link #createEnvironment()}.
+	 */
+	@Override
+	public ConfigurableEnvironment getEnvironment() {
+		if (this.environment == null) {
+			this.environment = createEnvironment();
+		}
+		return this.environment;
+	}
+```
+
+> 上面的英文注释（allowing for further customization）说允许子类实现，同样地`getEnvironment`方法也会被`AbstractApplicationContext`的子类覆写。
+
+#### Spring Boot
+
+```java
+public ConfigurableApplicationContext run(String... args) {
+		StopWatch stopWatch = new StopWatch();
+		stopWatch.start();
+		ConfigurableApplicationContext context = null;
+		Collection<SpringBootExceptionReporter> exceptionReporters = new ArrayList<>();
+		configureHeadlessProperty();
+		SpringApplicationRunListeners listeners = getRunListeners(args);
+		listeners.starting();
+		try {
+			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
+            // 1
+			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
+			configureIgnoreBeanInfo(environment);
+			Banner printedBanner = printBanner(environment);
+			context = createApplicationContext();
+			exceptionReporters = getSpringFactoriesInstances(SpringBootExceptionReporter.class,
+					new Class[] { ConfigurableApplicationContext.class }, context);
+            // 2
+			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
+			refreshContext(context);
+			afterRefresh(context, applicationArguments);
+			stopWatch.stop();
+			if (this.logStartupInfo) {
+				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), stopWatch);
+			}
+			listeners.started(context);
+			callRunners(context, applicationArguments);
+		}
+		catch (Throwable ex) {
+			handleRunFailure(context, ex, exceptionReporters, listeners);
+			throw new IllegalStateException(ex);
+		}
+
+		try {
+			listeners.running(context);
+		}
+		catch (Throwable ex) {
+			handleRunFailure(context, ex, exceptionReporters, null);
+			throw new IllegalStateException(ex);
+		}
+		return context;
+	}
+```
+
+##### `SpringApplication#prepareEnvironment`
+
+> 先
+
+```java
+private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
+			ApplicationArguments applicationArguments) {
+    
+		// Create and configure the environment
+		ConfigurableEnvironment environment = getOrCreateEnvironment();
+		configureEnvironment(environment, applicationArguments.getSourceArgs());
+		ConfigurationPropertySources.attach(environment);
+		listeners.environmentPrepared(environment);
+		bindToSpringApplication(environment);
+		if (!this.isCustomEnvironment) {
+			environment = new EnvironmentConverter(getClassLoader()).convertEnvironmentIfNecessary(environment,
+					deduceEnvironmentClass());
+		}
+		ConfigurationPropertySources.attach(environment);
+		return environment;
+	}
+```
+
+##### `SpringApplication#prepareContext`
+
+   > 后
+
+   ```java
+   private void prepareContext(ConfigurableApplicationContext context, ConfigurableEnvironment environment,
+   			SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
+       	// 前面已经创建好了Environment对象
+   		context.setEnvironment(environment);
+   		postProcessApplicationContext(context);
+   		applyInitializers(context);
+   		
+   	}
+   ```
+
+###### `applyInitializersapplyInitializers` 
+
+```java
+protected void applyInitializers(ConfigurableApplicationContext context) {
+		// 遍历ApplicationContextInitializer对象
+		for (ApplicationContextInitializer
+ApplicationContextInitializer initializer : getInitializers()) {
+			Class<?> requiredType = GenericTypeResolver.resolveTypeArgument(initializer.getClass(),
+					ApplicationContextInitializer.class);
+			Assert.isInstanceOf(requiredType, context, "Unable to call initializer.");
+			initializer.initialize(context);
+		}
+	}
+```
+
+> 我们可以自定义`ApplicationContextInitializer`类，实现`initialize`方法，在方法里面替换掉默认的`Environment`
+
+```java
+public interface ApplicationContextInitializer<C extends ConfigurableApplicationContext> {
+
+	/**
+	 * Initialize the given application context.
+	 * @param applicationContext the application to configure
+	 */
+	void initialize(C applicationContext);
+
+}
+```
+
+### Spring应用上下文生命周期执行动作
+
+> 参考本文除面试题以外的章节

@@ -2,8 +2,6 @@ package org.geekbang.thinking.in.spring.application.context.lifecycle;
 
 import org.springframework.context.support.GenericApplicationContext;
 
-import static org.springframework.beans.factory.support.BeanDefinitionBuilder.rootBeanDefinition;
-
 /**
  * Spring Shutdown Hook 线程Demo
  *

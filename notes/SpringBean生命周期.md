@@ -1,3 +1,5 @@
+[toc]
+
 本文基于**Spring Framework 5.2.2.RELEASE**版本，主要参考了 [极客时间 小马哥讲Spring核心编程思想 ](https://time.geekbang.org/course/intro/265) ，谢谢小马哥如此用心且深入浅出的讲解。
 
 准备工作：
@@ -13,12 +15,6 @@
          <version>5.2.2.RELEASE</version>
   </dependency>
   ```
-
-  TODO： 写一篇Spring之前学习的总结
-
-  > + 只有系统化学习才能产生有效的总结
-  > + 学会了才叫学习过
-  > + 系统学习加上输出总结文档或者学习原理的思考文档
 
 # Spring Bean生命周期理解
 
@@ -48,7 +44,7 @@
 
   > 基于Properties的配置无法指定编码，所以有可能会出现乱码
   
-  ```properties
+  ```
   user.(class)=org.geekbang.thinking.in.spring.ioc.overview.domain.User
   user.id=1001
   user.name=刘天若
